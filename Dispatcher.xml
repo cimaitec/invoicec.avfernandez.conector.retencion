@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	<xml fileName="Dispatcher.xml"/>
+	<Empresa>
+		<config>
+			<encrypted>resources/dispatcher_e.dat</encrypted>
+			<key>resources/dispatcher_k.dat</key>
+		</config>			
+		<DB>
+			<driver>com.microsoft.sqlserver.jdbc.SQLServerDriver</driver>
+			<Empresa>
+				<database>ret</database>
+			    <userSchemaDb>ret.dbo.</userSchemaDb>
+			    <url>jdbc:sqlserver://localhost:1433;databaseName=ret</url>  
+				<user>sa</user>
+				<password>123</password>
+				<reintentos_base>3</reintentos_base>
+				<entorno>PRUEBA</entorno>
+				<entorno_secuencia>001</entorno_secuencia>
+				<sql>   
+				<UpdateEstadoTrx>update [ESQUEMA]TblCpCabRetencion set CSnXMLGenerado = ? where	CNuSerie = ?
+								and RIGHT(REPLICATE('0',9) + CAST(NNuRetencion as nvarchar(9)),9) = ?
+								and CciSucursal = ? </UpdateEstadoTrx>				  
+				<insertFactElectronicaTmp>INSERT INTO [ESQUEMA]TblFacElectronicaTmp (NIdPvMovimiento,CCiTipoDocumento,CSnEstado,CodEstablecimiento,CodPuntEmision,secuencial,DFxIngreso) VALUES(?,?,?,?,?,?,getdate())</insertFactElectronicaTmp>
+    			<getTrx><![CDATA[
+				Select	TOP 10
+						SUBSTRING(CNuSerie,0,4) establecimiento
+						,	SUBSTRING(CNuSerie,4,3) ptoEmision 
+						,	RIGHT(REPLICATE('0',9) + CAST(NNuRetencion as nvarchar(9)),9) secuencial
+						,	'07' as tipoDocumento
+						,	CCiSucursal as sucursal
+						,	convert(varchar, DFxEmision, 103) as FechaEmision
+					from	[ESQUEMA]TblCpCabRetencion
+				where	
+						CCeStatus = 'I'	
+						and NNuRetencion is not null
+						and (CSnXMLGenerado is null or CSnXMLGenerado = ' ') 
+						and CciSucursal = ?
+						and DFxEmision >= GETDATE()-200
+				]]></getTrx>   
+	    		<InfoTributariaXmlTrx><![CDATA[
+					select 	
+							distinct
+							convert(varchar, a.DFxEmision, 103) as FechaEmision
+							,	c.CCtTipoDoc as codDocSustento
+							,	c.CTxNumSerie+c.CTxNumDocumento as numDocSustento
+							,	CONVERT(nvarchar(10),CAST(c.DFmFechaFactura as DATE),103) as fechaDocSustento
+							,	(right(convert(varchar(10),a.DFxRetencion,103),7)) as periodoFiscal
+							,	d.CCiIdentificacion AS identificacionSujetoRetenido
+							,	CASE WHEN d.CCiTipoIdentificacion = 'P' THEN '06'
+									 WHEN d.CCiTipoIdentificacion = 'C' THEN '05' 
+									 WHEN d.CCiTipoIdentificacion = 'R' THEN '04' 
+									 WHEN d.CCiTipoIdentificacion = 'F' THEN '07' ELSE '07' END AS tipoIdentificacionSujetoRetenido
+							,	d.CNoProveedor AS razonSocialSujetoRetenido
+							,	d.CCiProveedor AS codigoProveedor
+							,	COALESCE(CASE WHEN d.CDsEmail  = '' THEN null ELSE d.CDsEmail END,'facturacionelectronica@corpfernandez.com') AS emailSujetoRetenido
+							,	CASE WHEN len(LTRIM(RTRIM(d.CDsDireccion))) <= 5 THEN 'NO TIENE' ELSE ISNULL(LTRIM(RTRIM(d.CDsDireccion)),'NO TIENE') END as direccion
+							,	'' as telefono			
+							,	'' as vendedor	
+							,	'' as origenDocumento				   
+					  from		TblCpCabRetencion a
+								, TblCpDetRetencion b
+								, TblCpCabMovimiento c
+								, TblGeProveedor d
+						where	(a.CNuSerie + a.NNuRetencion ) = (b.CNuSerie + b.NNuRetencion)
+								and (b.NNuAnio + b.NNuControl)= (c.NNuAnio + c.NNuControl)
+								and d.CCiProveedor= c.CCiProveedor
+								and	a.CNuSerie = ?
+								and RIGHT(REPLICATE('0',9) + CAST(a.NNuRetencion as nvarchar(9)),9) = ?		
+								and a.CCiSucursal = ?
+					]]></InfoTributariaXmlTrx>
+    			<ImpuestosTrxRetencion><![CDATA[
+				select	
+						CASE WHEN b.CCtCuenta = 'F' THEN 2 ELSE 1 END AS codigo
+						,	b.CTxCodiRete	codigoRetencion
+						,	b.NNuBaseRete	baseImponible
+						,	CAST(b.NNuPorcRete as INT)	porcentajeRetener
+						,	b.NNuValor		valorRetenido
+						,	c.CCtTipoDoc as codDocSustento
+						,	c.CTxNumSerie+c.CTxNumDocumento as numDocSustento
+						,	CONVERT(nvarchar(10),CAST(c.DFmFechaFactura as DATE),103) as fechaEmisionDocSustento			   
+				  from		TblCpCabRetencion a
+							, TblCpDetRetencion b
+							, TblCpCabMovimiento c
+							
+					where	(a.CNuSerie + a.NNuRetencion ) = (b.CNuSerie + b.NNuRetencion)
+							and (b.NNuAnio + b.NNuControl)= (c.NNuAnio + c.NNuControl)
+							and	a.CNuSerie = ?
+							and RIGHT(REPLICATE('0',9) + CAST(a.NNuRetencion as nvarchar(9)),9) = ?
+							and a.CCiSucursal = ?
+				order by codigo		
+				]]></ImpuestosTrxRetencion>
+    			</sql>		
+		</Empresa>
+		<Invoice>
+				<database>Invoice</database>
+			    <url>jdbc:sqlserver://localhost:1433;databaseName=Invoice</url>
+				<user>sa</user>
+				<password>123</password>
+				<reintentos_base>3</reintentos_base>
+		</Invoice>
+		</DB>
+		<util>
+			<normalizacion>
+				<EMAIL><![CDATA[[&,+/:!()*#^'\" 	?=$%;\\<>`]]]></EMAIL>
+				<GENERAL><![CDATA[[&,@.+-/:!()*#^'\" 	?=$%;\\<>`]]]></GENERAL>
+			</normalizacion>
+		</util>
+		<soporte>
+			<enable>Y</enable>
+			<!-- 
+				<host>mail.corpfernandez.com</host>
+				<sender>facturacionelectronica@corpfernandez.com</sender>
+				<user>facturacionelectronica</user>
+				<password>12345</password>	
+				<tipo_autentificacion>NONE</tipo_autentificacion>
+				<port>25</port>
+			-->	
+				<host>mail.cimait.com.ec</host>
+				<sender>vpincay@cimait.com.ec</sender>
+				<user>vpincay</user>
+				<password>vpincay2</password>
+				<tipoMail>HTML</tipoMail>
+				<port>25</port>	
+				<tipo_autentificacion>SSL</tipo_autentificacion>
+			
+			<tipoMail>HTML</tipoMail>
+			<receivers-list>vpincay@cimait.com.ec;</receivers-list>
+			<receivers-up-down>vpincay@cimait.com.ec;</receivers-up-down>
+			<subject>CONECTOR RET </subject>
+			<message_service_up>
+				Se levanta Conector de Retenciones de Avicola Fernandez S.A. >>  |FECHA|
+			</message_service_up>				
+			<message_service_down>
+				Se detiene Conector de Retenciones de Avicola Fernandez S.A. >>  |FECHA|
+			</message_service_down>
+			<message_service_error>
+			<![CDATA[
+				<html>
+					<body align="center">Estimado Soporte de Avicola Fernandez S.A.
+						<br>Favor verificar el siguiente error al generar el XML.
+						<br>Mensaje de Error:
+						<br>|MENSAJE ERROR|
+						<br>
+						<br>Proceso de Conector de Retenciones de Avicola Fernandez S.A.
+					</body>
+				</html>
+			]]>
+			</message_service_error>				
+		</soporte>	
+		<service>
+			<request>
+					<hilos>
+						<cantidad_ejecucion>1</cantidad_ejecucion> <!-- numero de hilos a ejecutarse en el proceso de hilos -->
+					</hilos>
+			</request>
+			<facturacion>
+			<tiposDocumento><!-- Informacion sacada de la tabla folio$_type de opera -->
+			 	<FACTURAS>01</FACTURAS>
+			 	<FACTURAST>01</FACTURAST>
+			 	<NCREDITO>04</NCREDITO>
+			 	<NCREDITOT>04</NCREDITOT>
+		    </tiposDocumento>	
+				<getTrx>
+				    <!--<statusInicial>OK</statusInicial>-->
+				    <sleepBloque>1000</sleepBloque>
+				    <tiposDocumentos>'07'</tiposDocumentos>
+				    <rownumBloque>100</rownumBloque>
+				</getTrx>		    	 	
+		    </facturacion>
+		    <facElectronica>
+		    	<version>1.1.0</version>
+		    	<ambiente>
+		 			<doc01>0</doc01>
+		 		</ambiente>
+		    	<tipoEmision>1</tipoEmision><!-- Tipo de Emision 1 Emision Normal / 2 Emision por indisponibilidad del Sistema -->
+		    	<tiposDocumentoEtiquetaXml><!-- Informacion sacada de la tabla folio$_type de opera -->
+			 	<doc01>factura</doc01>
+		    	<doc04>notaCredito</doc04>
+			 	<doc05>notaDebito</doc05>
+			 	<doc06>guiaRemision</doc06>
+			 	<doc07>comprobanteRetencion</doc07>
+		    	</tiposDocumentoEtiquetaXml>
+		    	<infoTributaria>
+					<ambiente><documentos>01,04,05,06,07</documentos></ambiente>
+				</infoTributaria>				
+		    </facElectronica>
+		</service>
+		<alarm>
+			<sms>
+				<enable>N</enable>
+				<ip></ip>
+				<port></port>
+				<sender></sender>
+				<receivers-list></receivers-list>
+			</sms>
+			<sleep-min>5</sleep-min>
+			<overtime-alarm>
+				<packageRecharge>1000</packageRecharge>
+			</overtime-alarm>
+		</alarm>
+		<OROGYE>
+			<Query-Principal></Query-Principal>
+		</OROGYE>
+		<command>
+			<time-out>40000</time-out>
+		</command>		
+		<log>
+		    <control>log4j.xml</control>
+		</log>
+		<ctrl-on-off>
+			<file>Dispatcher.ctr</file>
+		</ctrl-on-off>	
+	</Empresa>
+</configuration>
